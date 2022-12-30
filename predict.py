@@ -3,9 +3,10 @@ download the models to ./weights
 wget https://openaipublic.azureedge.net/main/point-e/base_40m_imagevec.pt -O base40M-imagevec.pt
 wget https://openaipublic.azureedge.net/main/point-e/base_40m_textvec.pt  -O base40M-textvec.pt
 wget https://openaipublic.azureedge.net/main/point-e/upsample_40m.pt  -O upsample_40m.pt
+wget https://openaipublic.azureedge.net/main/point-e/base_40m.pt -O base40M.pt
 """
 
-
+from PIL import Image
 import os
 from typing import Any, List
 
@@ -37,12 +38,22 @@ class Predictor(BasePredictor):
         base_model.eval()
         base_diffusion = diffusion_from_config(DIFFUSION_CONFIGS[base_name])
 
+        print("creating img2pointcloud base model...")
+        base_name_img = "base40M"  # use base300M or base1B for better results
+        base_model_img = model_from_config(MODEL_CONFIGS[base_name_img], device)
+        base_model_img.eval()
+        base_diffusion_img = diffusion_from_config(DIFFUSION_CONFIGS[base_name_img])
+
         print("creating upsample model...")
         upsampler_model = model_from_config(MODEL_CONFIGS["upsample"], device)
         upsampler_model.eval()
         upsampler_diffusion = diffusion_from_config(DIFFUSION_CONFIGS["upsample"])
 
         print("downloading base checkpoint...")
+        base_model_img.load_state_dict(
+            torch.load(f"weights/{base_name_img}.pt", map_location=device)
+        )
+
         base_model.load_state_dict(
             torch.load(f"weights/{base_name}.pt", map_location=device)
         )
@@ -52,7 +63,7 @@ class Predictor(BasePredictor):
             torch.load("weights/upsample_40m.pt", map_location=device)
         )
 
-        self.sampler = PointCloudSampler(
+        self.sampler_text = PointCloudSampler(
             device=device,
             models=[base_model, upsampler_model],
             diffusions=[base_diffusion, upsampler_diffusion],
@@ -65,26 +76,47 @@ class Predictor(BasePredictor):
             ),  # Do not condition the upsampler at all
         )
 
+        self.sampler_img = PointCloudSampler(
+            device=device,
+            models=[base_model_img, upsampler_model],
+            diffusions=[base_diffusion_img, upsampler_diffusion],
+            num_points=[1024, 4096 - 1024],
+            aux_channels=["R", "G", "B"],
+            guidance_scale=[3.0, 0.0],
+        )
+
     @torch.inference_mode()
     def predict(
         self,
         prompt: str = Input(
-            description="Input prompt",
-            default="a red motorcycle",
+            description="Input prompt.",
+            default=None,
+        ),
+        image: Path = Input(
+            description="Input image. When prompt is set, the model will disregard the image and generate pointcloud based on the prompt",
+            default=None,
         ),
     ) -> ModelOutput:
         """Run a single prediction on the model"""
+        assert (
+            prompt is not None or image is not None
+        ), "Please provide either a prompt or an image for generating pointcloud"
+
+        sampler = self.sampler_text if prompt is not None else self.sampler_img
 
         # Produce a sample from the model.
         samples = None
         for x in tqdm(
-            self.sampler.sample_batch_progressive(
-                batch_size=1, model_kwargs=dict(texts=[prompt])
+            sampler.sample_batch_progressive(
+                batch_size=1,
+                model_kwargs=dict(texts=[prompt])
+                if prompt is not None
+                else dict(images=[Image.open(str(image))]),
             )
         ):
             samples = x
 
-        pc = self.sampler.output_to_point_clouds(samples)[0]
+        pc = sampler.output_to_point_clouds(samples)[0]
         fig = plot_point_cloud(pc, grid_size=3)
 
         out_path = f"/tmp/out.png"
