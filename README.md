@@ -21,7 +21,18 @@ Two kinds of input are accepted:
 Note that if the `prompt` is provided, the `image` will be ignored. Therefore for effectively generating pointcloud from images please remove the `prompt` if it was previously set.
 
 The supported return values are:
-- a pointcloud file saved in `.npz` format
+- [PointCloud](https://github.com/chenxwh/point-e/blob/main/point_e/util/point_cloud.py#L19) saved as json output. `PointCloud` is  an array of points sampled on a surface, with `coords`: an [N x 3] array of point coordinates, and `channel` attributes which corresponds to `R`, `G`, `B` colors. The format is:
+    ```
+    {
+        "coords": [...],
+        "channels": {
+            "R": [...],
+            "G": [...],
+            "B": [...]
+        }
+    }
+    ```
+- [Optional] the pointcloud is saved as a `.npz` file if `save_npz` is set to `True`
 - [Optional] the samples of the points, which is converted from tensor to a list of size [1, 6, 4096] if `save_samples` is set to `True`. This may be more useful for API use cases
 - [Optional]  a plt image with 9 veiws, if `generate_pc_plot` is set to `True`
-- [Optional] we also enable generating an animation of the pointcloud if `generation_animation` is set to `True`.
+- [Optional] we also enable generating an animation of the pointcloud if `generation_animation` is set to `True`

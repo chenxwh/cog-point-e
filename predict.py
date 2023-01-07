@@ -25,8 +25,8 @@ from point_e.util.plotting import plot_point_cloud
 
 
 class ModelOutput(BaseModel):
-    pointcloud: Path
-    samples: Optional[Any]
+    pointcloud_json: Any
+    pointcloud_npz: Optional[Path]
     figure: Optional[Path]
     annimation: Optional[Path]
 
@@ -100,16 +100,16 @@ class Predictor(BasePredictor):
             description="Input image. When prompt is set, the model will disregard the image and generate pointcloud based on the prompt",
             default=None,
         ),
+        save_npz: bool = Input(
+            description="If set true, the pointcloud will be saved as a .npz file.",
+            default=False,
+        ),
         generate_pc_plot: bool = Input(
             description="If set true, the point cloud will be rendered as a plot with 9 views.",
             default=False,
         ),
         generate_annimation: bool = Input(
             description="If set true, a gif file with the annimated pointcloud will be generated.",
-            default=False,
-        ),
-        save_samples: bool = Input(
-            description="If set true, the raw sampled points for point cloud will be returned as list. Might be more useful for API use cases.",
             default=False,
         ),
     ) -> ModelOutput:
@@ -134,10 +134,12 @@ class Predictor(BasePredictor):
 
         pc = sampler.output_to_point_clouds(samples)[0]
 
-        pointcloud_out_path = f"/tmp/pointcloud.npz"
-        PointCloud.save(pc, pointcloud_out_path)
+        pc_json = {"coords": pc.coords, "channels": pc.channels}
 
-        if save_samples:
+        if save_npz:
+            pointcloud_out_path = f"/tmp/pointcloud.npz"
+            PointCloud.save(pc, pointcloud_out_path)
+
             samples_list = samples.tolist()
 
         if generate_pc_plot:
@@ -146,13 +148,15 @@ class Predictor(BasePredictor):
             fig.savefig(str(out_path))
 
         if generate_annimation:
-            print("Generating annimation of the pointcloud, this may take a few minutes...")
+            print(
+                "Generating annimation of the pointcloud, this may take a few minutes..."
+            )
             gif_out_path = f"/tmp/out.gif"
             save_gif(pc, gif_out_path)
 
         return ModelOutput(
-            pointcloud=Path(pointcloud_out_path),
-            samples=samples_list if save_samples else None,
+            pointcloud_json=pc_json,
+            pointcloud_npz=Path(pointcloud_out_path) if save_npz else None,
             figure=Path(out_path) if generate_pc_plot else None,
             annimation=Path(gif_out_path) if generate_annimation else None,
         )
@@ -193,7 +197,7 @@ def save_gif(pc, out_path, fig_size=8):
     def rotate_view(frame, azim_delta=1):
         ax.azim = -20 - azim_delta * frame
 
-    animation = FuncAnimation(fig, rotate_view, frames=360, interval=40)
+    animation = FuncAnimation(fig, rotate_view, frames=360, interval=15)
 
     writer = PillowWriter(fps=40)
     print("Saving the annimation...")
