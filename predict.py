@@ -6,25 +6,29 @@ wget https://openaipublic.azureedge.net/main/point-e/upsample_40m.pt  -O upsampl
 wget https://openaipublic.azureedge.net/main/point-e/base_40m.pt -O base40M.pt
 """
 
-from PIL import Image
 import os
-from typing import Any, List
-
+import numpy as np
+from typing import Any, List, Optional
+from PIL import Image
+from matplotlib.animation import FuncAnimation, PillowWriter
+import matplotlib.pyplot as plt
 import torch
 from tqdm.auto import tqdm
 from cog import BasePredictor, Input, Path, BaseModel
 
 from point_e.diffusion.configs import DIFFUSION_CONFIGS, diffusion_from_config
-from point_e.diffusion.sampler import PointCloudSampler
+from point_e.diffusion.sampler import PointCloudSampler, PointCloud
 from point_e.models.download import load_checkpoint
-
+from point_e.util.pc_to_mesh import marching_cubes_mesh
 from point_e.models.configs import MODEL_CONFIGS, model_from_config
 from point_e.util.plotting import plot_point_cloud
 
 
 class ModelOutput(BaseModel):
-    samples: Any
-    figure: Path
+    pointcloud: Path
+    samples: Optional[Any]
+    figure: Optional[Path]
+    annimation: Optional[Path]
 
 
 class Predictor(BasePredictor):
@@ -96,6 +100,18 @@ class Predictor(BasePredictor):
             description="Input image. When prompt is set, the model will disregard the image and generate pointcloud based on the prompt",
             default=None,
         ),
+        generate_pc_plot: bool = Input(
+            description="If set true, the point cloud will be rendered as a plot with 9 views.",
+            default=False,
+        ),
+        generate_annimation: bool = Input(
+            description="If set true, a gif file with the annimated pointcloud will be generated.",
+            default=False,
+        ),
+        save_samples: bool = Input(
+            description="If set true, the raw sampled points for point cloud will be returned as list. Might be more useful for API use cases.",
+            default=False,
+        ),
     ) -> ModelOutput:
         """Run a single prediction on the model"""
         assert (
@@ -117,11 +133,68 @@ class Predictor(BasePredictor):
             samples = x
 
         pc = sampler.output_to_point_clouds(samples)[0]
-        fig = plot_point_cloud(pc, grid_size=3)
 
-        out_path = f"/tmp/out.png"
-        fig.savefig(str(out_path))
+        pointcloud_out_path = f"/tmp/pointcloud.npz"
+        PointCloud.save(pc, pointcloud_out_path)
 
-        samples_list = samples.tolist()
+        if save_samples:
+            samples_list = samples.tolist()
 
-        return ModelOutput(samples=samples_list, figure=Path(out_path))
+        if generate_pc_plot:
+            fig = plot_point_cloud(pc, grid_size=3)
+            out_path = f"/tmp/out.png"
+            fig.savefig(str(out_path))
+
+        if generate_annimation:
+            print("Generating annimation of the pointcloud, this may take a few minutes...")
+            gif_out_path = f"/tmp/out.gif"
+            save_gif(pc, gif_out_path)
+
+        return ModelOutput(
+            pointcloud=Path(pointcloud_out_path),
+            samples=samples_list if save_samples else None,
+            figure=Path(out_path) if generate_pc_plot else None,
+            annimation=Path(gif_out_path) if generate_annimation else None,
+        )
+
+
+def save_gif(pc, out_path, fig_size=8):
+    colors = np.stack([pc.channels["R"], pc.channels["G"], pc.channels["B"]], axis=-1)
+
+    fig = plt.figure(figsize=[fig_size, fig_size])
+    ax = fig.add_axes([0, 0, 1, 1], projection="3d")
+    ax.scatter(
+        pc.coords[:, 0],
+        pc.coords[:, 1],
+        pc.coords[:, 2],
+        c=colors,
+        clip_on=False,
+        vmax=2 * pc.coords[:, 1].max(),
+    )
+    ax.elev = -5
+    ax.axis("off")
+
+    # make sure equal scale is used across all axes. From Stackoverflow
+    # https://stackoverflow.com/questions/13685386/matplotlib-equal-unit-length-with-equal-aspect-ratio-z-axis-is-not-equal-to
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    zlim = ax.get_zlim()
+
+    max_range = np.array([np.diff(xlim), np.diff(ylim), np.diff(zlim)]).max() / 2.0
+
+    mid_x = np.mean(xlim)
+    mid_y = np.mean(ylim)
+    mid_z = np.mean(zlim)
+    ax.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
+    # build animated loop
+    def rotate_view(frame, azim_delta=1):
+        ax.azim = -20 - azim_delta * frame
+
+    animation = FuncAnimation(fig, rotate_view, frames=360, interval=40)
+
+    writer = PillowWriter(fps=40)
+    print("Saving the annimation...")
+    animation.save(out_path, writer=writer, dpi=100)
