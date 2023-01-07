@@ -33,6 +33,5 @@ The supported return values are:
     }
     ```
 - [Optional] the pointcloud is saved as a `.npz` file if `save_npz` is set to `True`
-- [Optional] the samples of the points, which is converted from tensor to a list of size [1, 6, 4096] if `save_samples` is set to `True`. This may be more useful for API use cases
 - [Optional]  a plt image with 9 veiws, if `generate_pc_plot` is set to `True`
 - [Optional] we also enable generating an animation of the pointcloud if `generation_animation` is set to `True`
