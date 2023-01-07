@@ -140,8 +140,6 @@ class Predictor(BasePredictor):
             pointcloud_out_path = f"/tmp/pointcloud.npz"
             PointCloud.save(pc, pointcloud_out_path)
 
-            samples_list = samples.tolist()
-
         if generate_pc_plot:
             fig = plot_point_cloud(pc, grid_size=3)
             out_path = f"/tmp/out.png"
