@@ -1,11 +1,3 @@
-"""
-download the models to ./weights
-wget https://openaipublic.azureedge.net/main/point-e/base_40m_imagevec.pt -O base40M-imagevec.pt
-wget https://openaipublic.azureedge.net/main/point-e/base_40m_textvec.pt  -O base40M-textvec.pt
-wget https://openaipublic.azureedge.net/main/point-e/upsample_40m.pt  -O upsample_40m.pt
-wget https://openaipublic.azureedge.net/main/point-e/base_40m.pt -O base40M.pt
-"""
-
 import os
 import numpy as np
 from typing import Any, List, Optional
@@ -25,10 +17,8 @@ from point_e.util.plotting import plot_point_cloud
 
 
 class ModelOutput(BaseModel):
-    pointcloud_json: Any
-    pointcloud_npz: Optional[Path]
-    figure: Optional[Path]
-    annimation: Optional[Path]
+    json_file: Optional[Any]
+    animation: Optional[Path]
 
 
 class Predictor(BasePredictor):
@@ -97,26 +87,19 @@ class Predictor(BasePredictor):
             default=None,
         ),
         image: Path = Input(
-            description="Input image. When prompt is set, the model will disregard the image and generate pointcloud based on the prompt",
+            description="Input image. When prompt is set, the model will disregard the image and generate point cloud based on the prompt",
             default=None,
         ),
-        save_npz: bool = Input(
-            description="If set true, the pointcloud will be saved as a .npz file.",
-            default=False,
-        ),
-        generate_pc_plot: bool = Input(
-            description="If set true, the point cloud will be rendered as a plot with 9 views.",
-            default=False,
-        ),
-        generate_annimation: bool = Input(
-            description="If set true, a gif file with the annimated pointcloud will be generated.",
-            default=False,
+        output_format: str = Input(
+            description='Choose the format of the output, either an animation or a json file of the point cloud. The json format is: { "coords": [...], "colors": [...] }, where "coords" is an [N x 3] array of (X,Y,Z) point coordinates, and "colors" is an [N x 3] array of (R,G,B) color values.',
+            default="animation",
+            choices=["animation", "json_file"],
         ),
     ) -> ModelOutput:
         """Run a single prediction on the model"""
         assert (
             prompt is not None or image is not None
-        ), "Please provide either a prompt or an image for generating pointcloud"
+        ), "Please provide either a prompt or an image for generating point cloud"
 
         sampler = self.sampler_text if prompt is not None else self.sampler_img
 
@@ -133,45 +116,32 @@ class Predictor(BasePredictor):
             samples = x
 
         pc = sampler.output_to_point_clouds(samples)[0]
-
-        pc_json = {"coords": pc.coords, "channels": pc.channels}
-
-        if save_npz:
-            pointcloud_out_path = f"/tmp/pointcloud.npz"
-            PointCloud.save(pc, pointcloud_out_path)
-
-        if generate_pc_plot:
-            fig = plot_point_cloud(pc, grid_size=3)
-            out_path = f"/tmp/out.png"
-            fig.savefig(str(out_path))
-
-        if generate_annimation:
-            print(
-                "Generating annimation of the pointcloud, this may take a few minutes..."
-            )
-            gif_out_path = f"/tmp/out.gif"
-            save_gif(pc, gif_out_path)
-
-        return ModelOutput(
-            pointcloud_json=pc_json,
-            pointcloud_npz=Path(pointcloud_out_path) if save_npz else None,
-            figure=Path(out_path) if generate_pc_plot else None,
-            annimation=Path(gif_out_path) if generate_annimation else None,
+        colors = np.stack(
+            [pc.channels["R"], pc.channels["G"], pc.channels["B"]], axis=-1
         )
 
+        if output_format == "json_file":
+            pc_json = {"coords": pc.coords, "colors": colors}
+            return ModelOutput(json_file=pc_json)
 
-def save_gif(pc, out_path, fig_size=8):
-    colors = np.stack([pc.channels["R"], pc.channels["G"], pc.channels["B"]], axis=-1)
+        print(
+            "Generating the animation of the point cloud, this may take a few minutes..."
+        )
+        gif_out_path = f"/tmp/out.gif"
+        save_gif(pc.coords, colors, gif_out_path)
+        return ModelOutput(animation=Path(gif_out_path))
 
+
+def save_gif(coords, colors, out_path, fig_size=8):
     fig = plt.figure(figsize=[fig_size, fig_size])
     ax = fig.add_axes([0, 0, 1, 1], projection="3d")
     ax.scatter(
-        pc.coords[:, 0],
-        pc.coords[:, 1],
-        pc.coords[:, 2],
+        coords[:, 0],
+        coords[:, 1],
+        coords[:, 2],
         c=colors,
         clip_on=False,
-        vmax=2 * pc.coords[:, 1].max(),
+        vmax=2 * coords[:, 1].max(),
     )
     ax.elev = -5
     ax.axis("off")
@@ -198,5 +168,5 @@ def save_gif(pc, out_path, fig_size=8):
     animation = FuncAnimation(fig, rotate_view, frames=360, interval=15)
 
     writer = PillowWriter(fps=40)
-    print("Saving the annimation...")
+    print("Saving the animation...")
     animation.save(out_path, writer=writer, dpi=100)

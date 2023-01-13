@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+
+import os
+import wget
+
+MODEL_CACHE = "weights2"
+os.makedirs(MODEL_CACHE, exist_ok=True)
+
+wget.download("https://openaipublic.azureedge.net/main/point-e/base_40m_imagevec.pt", out=f"{MODEL_CACHE}/base40M-imagevec.pt")
+wget.download("https://openaipublic.azureedge.net/main/point-e/base_40m_textvec.pt", out=f"{MODEL_CACHE}/base40M-textvec.pt")
+wget.download("https://openaipublic.azureedge.net/main/point-e/upsample_40m.pt", out=f"{MODEL_CACHE}/upsample_40m.pt")
+wget.download("https://openaipublic.azureedge.net/main/point-e/base_40m.pt", out=f"{MODEL_CACHE}/base40M.pt")

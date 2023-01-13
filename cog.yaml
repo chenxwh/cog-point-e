@@ -2,7 +2,8 @@ build:
   gpu: true
   cuda: "11.6"
   python_version: "3.10"
-
+  python_packages:
+    - "wget==3.2"
   run:
     - git clone https://github.com/openai/point-e.git && cd point-e && pip install e .
     
