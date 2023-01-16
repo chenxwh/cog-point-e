@@ -5,6 +5,6 @@ build:
   python_packages:
     - "wget==3.2"
   run:
-    - git clone https://github.com/openai/point-e.git && cd point-e && pip install e .
+    - pip install git+https://github.com/openai/point-e.git@fc8a607c08a3ea804cc82bf1ef8628f88a3a5d2f
     
 predict: "predict.py:Predictor"
