@@ -7,6 +7,11 @@ See the paper [Point-E: A System for Generating 3D Point Clouds from Complex Pro
 This repo includes text2pointcloud (with [base_40m_textvec.pt](https://github.com/openai/point-e/blob/main/point_e/models/download.py#L16) checkpoint) and img2pointcloud (with [base40M.pt](https://github.com/openai/point-e/blob/main/point_e/models/download.py#L18) checkpoint) generation.
 
 
+## Web demo and API
+
+Try the demo or explore the API here [![Replicate](https://replicate.com/cjwbw/kpoint-earlo/badge)](https://replicate.com/cjwbw/point-e) 
+
+
 ## Run locally
 
 First, download the pre-trained weights:
@@ -32,8 +37,3 @@ The supported output format are:
 where "coords" is an [N x 3] array of (X,Y,Z) point coordinates, and "colors" is an [N x 3] array of (R,G,B) color values
 
 - Or an `animation` of the point cloud
-
-## Web Demo and API
-
-Try the demo or explore the API here [![Replicate](https://replicate.com/cjwbw/kpoint-earlo/badge)](https://replicate.com/cjwbw/point-e) 
-
